@@ -20,38 +20,61 @@ const TrashIcon = () => (
 
 const FileViewer = () => {
   const [files, setFiles] = useState([]);
+  const [hasMore, setHasMore] = useState(true);
+  const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      fetchFiles();
-    }, 1000);
-
-    return () => clearInterval(interval);
-  }, []);
+    fetchFiles();
+  }, [page]);
 
   const fetchFiles = async () => {
-    const resp = await fetch("/api/assistants/files", {
-      method: "GET",
-    });
-    const data = await resp.json();
-    setFiles(data);
+    try {
+      setLoading(true);
+      const resp = await fetch(`/api/assistants/files?page=${page}`);
+      if (!resp.ok) {
+        throw new Error("Failed to fetch files");
+      }
+      const data = await resp.json();
+      setFiles((prevFiles) => [...prevFiles, ...data.files]);
+      setHasMore(data.hasMore);
+      setPage((prevPage) => prevPage + 1);
+    } catch (error) {
+      console.error("Failed to fetch files:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleFileDelete = async (fileId) => {
-    await fetch("/api/assistants/files", {
-      method: "DELETE",
-      body: JSON.stringify({ fileId }),
-    });
+  const handleFileDelete = async (fileId: any) => {
+    try {
+      await fetch("/api/assistants/files", {
+        method: "DELETE",
+        body: JSON.stringify({ fileId }),
+      });
+      setFiles((prevFiles) =>
+        prevFiles.filter((file: { file_id: any }) => file.file_id !== fileId)
+      );
+    } catch (error) {
+      console.error("Failed to delete file:", error);
+    }
   };
 
-  const handleFileUpload = async (event) => {
+  const handleFileUpload = async (event: {
+    target: { files: string | any[] };
+  }) => {
     const data = new FormData();
     if (event.target.files.length < 0) return;
     data.append("file", event.target.files[0]);
-    await fetch("/api/assistants/files", {
-      method: "POST",
-      body: data,
-    });
+    try {
+      await fetch("/api/assistants/files", {
+        method: "POST",
+        body: data,
+      });
+      fetchFiles(); // Refresh files list after upload
+    } catch (error) {
+      console.error("Failed to upload file:", error);
+    }
   };
 
   return (
@@ -64,7 +87,7 @@ const FileViewer = () => {
         {files.length === 0 ? (
           <div className={styles.title}>Attach files to test file search</div>
         ) : (
-          files.map((file) => (
+          files.map((file: any) => (
             <div key={file.file_id} className={styles.fileEntry}>
               <div className={styles.fileName}>
                 <span className={styles.fileName}>{file.filename}</span>
@@ -76,6 +99,8 @@ const FileViewer = () => {
             </div>
           ))
         )}
+        {loading && <div>Loading...</div>}
+        {!loading && hasMore && <div onClick={fetchFiles}>Load More</div>}
       </div>
       <div className={styles.fileUploadContainer}>
         <label htmlFor="file-upload" className={styles.fileUploadBtn}>

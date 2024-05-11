@@ -21,12 +21,20 @@ export async function POST(request) {
 }
 
 // list files in assistant's vector store
-export async function GET() {
+// list files in assistant's vector store
+export async function GET(request) {
+  const params = new URLSearchParams(request.url.split("?")[1]); // Extract query parameters
   const vectorStoreId = await getOrCreateVectorStore(); // get or create vector store
-  const fileList = await openai.beta.vectorStores.files.list(vectorStoreId);
+  const page = parseInt(params.get("page")) || 1; // Get page number from query params, default to 1
+  const pageSize = parseInt(params.get("pageSize")) || 20; // Get page size from query params, default to 20
+
+  const fileList = await openai.beta.vectorStores.files.list(vectorStoreId, {
+    page: page,
+    per_page: pageSize,
+  });
 
   const filesArray = await Promise.all(
-    fileList.data.map(async (file) => {
+    fileList.data.map(async (file: any) => {
       const fileDetails = await openai.files.retrieve(file.id);
       const vectorFileDetails = await openai.beta.vectorStores.files.retrieve(
         vectorStoreId,
@@ -39,7 +47,13 @@ export async function GET() {
       };
     })
   );
-  return Response.json(filesArray);
+
+  // Check if there are more files beyond the current page
+  const hasMore = fileList.data.length === pageSize;
+
+  return new Response(JSON.stringify({ files: filesArray, hasMore: hasMore }), {
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 // delete file from assistant's vector store
